@@ -105,9 +105,15 @@ if __name__ == '__main__':
               '/home/linstead/Pictures/Belgrade/img_4116.jpg', \
               '/home/linstead/Pictures/Belgrade/DOES_NOT_EXIST']
 
+    # Set some tags
     for f in files:
         tagger.settags(f, ['tag1', 'tag2'])
 
+    tagger.settags('/home/linstead/Pictures/Belgrade/img_4116.jpg', ['tag3'])
+    tagger.settags('/home/linstead/Pictures/508330main_PIA05925_full.jpg', ['tag4 and something'])
+    tagger.settags('/home/linstead/Pictures/Belgrade/DOES_NOT_EXIST', 'tag999')
+
+    # Read the tags for the given files
     for f in files:
         tags = tagger.gettags(f)
-        print "File: %s; Tags: %s" % (f, " ".join(tags))
+        print "File: %s; Tags: %s" % (f, ", ".join(tags))
