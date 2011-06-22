@@ -43,6 +43,9 @@ class Tagger:
             for chunk in iter(lambda: f.read(8192), ''): 
                 md5.update(chunk)
 
+            # include the filename in the digest
+            md5.update(filename)
+
         return md5.hexdigest()
 
     def settags(self, filename, tags):
@@ -66,8 +69,8 @@ class Tagger:
                     except sqlite3.OperationalError, msg:
                         print msg
             
-                conn.commit()
-                c.close()
+            conn.commit()
+            c.close()
 
     def gettags(self, filename):
         """ Assume filename exists!
@@ -101,17 +104,20 @@ class Tagger:
 if __name__ == '__main__':
     tagger = Tagger('TESTCONFIG')
 
-    files = ['/home/linstead/Pictures/508330main_PIA05925_full.jpg', \
-              '/home/linstead/Pictures/Belgrade/img_4116.jpg', \
-              '/home/linstead/Pictures/Belgrade/DOES_NOT_EXIST']
+    files = ['/home/linstead/Dropbox/Code/tagger/IMAGES/A.JPG', \
+              '/home/linstead/Dropbox/Code/tagger/IMAGES/B.JPG', \
+              '/home/linstead/Dropbox/Code/tagger/IMAGES/C.JPG', \
+              '/home/linstead/Dropbox/Code/tagger/IMAGES/D.JPG', \
+              '/home/linstead/Dropbox/Code/tagger/IMAGES/E.JPG', \
+              '/home/linstead/Dropbox/Code/tagger/IMAGES/DOES_NOT_EXIST.JPG']
 
     # Set some tags
     for f in files:
         tagger.settags(f, ['tag1', 'tag2'])
 
-    tagger.settags('/home/linstead/Pictures/Belgrade/img_4116.jpg', ['tag3'])
-    tagger.settags('/home/linstead/Pictures/508330main_PIA05925_full.jpg', ['tag4 and something'])
-    tagger.settags('/home/linstead/Pictures/Belgrade/DOES_NOT_EXIST', 'tag999')
+#    tagger.settags(files[0], ['tag3'])
+#    tagger.settags(files[1], ['tag4 and something'])
+#    tagger.settags(files[3], 'tag999')
 
     # Read the tags for the given files
     for f in files:
