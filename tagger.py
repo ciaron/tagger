@@ -1,34 +1,65 @@
-import sqlite3
+from sqlalchemy import Text, ForeignKey, Column, MetaData, String, Integer, Table
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship, backref, sessionmaker
+from sqlalchemy.exc import *
+from sqlalchemy.sql import select
+#import sqlite3
 import hashlib
 import os
 
 """
 TODO: 
-    1. use sqlalchemy instead of sqlite3
-    2. command line argument parsing
-    3. check if tag exists for given filehash: do not repeat the update/insert
+    - command line argument parsing
 """
 
 db = '/tmp/tagger.db'
 
-class Tagger:
+Base = declarative_base()
 
-    def __init__(self, config):
+# for now, we'll do everything in memory
+engine = create_engine('sqlite:///:memory:', echo=True)
+
+metadata = Base.metadata
+
+# association table: file <-> tag
+file_tags = Table('file_tags', metadata,
+    Column('file_id', Integer, ForeignKey('files.id')),
+    Column('tag_id', Integer, ForeignKey('tags.id'))
+)
+
+class File(Base):
+    __tablename__ = 'files'
+    
+    id = Column(Integer, primary_key=True)
+    hash = Column(String(255), nullable=False, unique=True)
+    name = Column(String(255), nullable=False)
+
+    tags = relationship('Tag', secondary=file_tags, backref='files')
+
+    def __init__(self, hash, name):
+        self.hash = hash
+        self.name = name
+
+    def __repr__(self):
+        return "File(%r, %r, %r)" % (self.id, self.hash, self.name)
+
+class Tag(Base):
+    __tablename__ = 'tags'
+
+    id = Column(Integer, primary_key=True)
+    tag = Column(String(50), nullable=False, unique=True)
+
+    def __init__(self, tag):
+        self.tag = tag
+
+class TaggedFile(object):
+
+    def __init__(self, filename):
         """
-        initialise the tagger from the config file.
-         - check that DB exists, create if not found where config expects
+        set the hash attribute on this file
         """
-
-        conn = sqlite3.connect(db)
-        c = conn.cursor()
-
-        try:
-            c.execute('''create table if not exists tags (md5hash text, filename text, tag text)''')
-        except sqlite3.OperationalError, msg:
-            print msg
-
-        conn.commit()
-        c.close()
+        self.hash = self.__gethash(filename)   
 
     def __gethash(self, filename):
         """
@@ -48,78 +79,68 @@ class Tagger:
 
         return md5.hexdigest()
 
-    def settags(self, filename, tags):
-        """ Assume filename exists!
-        """
-
-        filehash = self.__gethash(filename)
-
-        if filehash != None:
-            conn = sqlite3.connect(db)
-            c = conn.cursor()
-
-            for tag in tags:
-                c.execute('select count(*) from tags where md5hash=? and filename=? and tag=?', (filehash, filename, tag))
-                count = int(c.fetchone()[0])
-
-                if count == 0:
-                    vals = (filehash, filename, tag)
-                    try:
-                        c.execute('insert into tags values (?, ?, ?)', vals)
-                    except sqlite3.OperationalError, msg:
-                        print msg
-            
-            conn.commit()
-            c.close()
-
-    def gettags(self, filename):
-        """ Assume filename exists!
-        """
-        tags = []
-        filehash = self.__gethash(filename)
-
-        if filehash != None:
-            conn = sqlite3.connect(db)
-            c = conn.cursor()
-
-            try:
-                t = (filehash,)
-                c.execute('select tag from tags where md5hash=?', t)
-            except sqlite3.OperationalError, msg:
-                print msg
-
-            tags = [x[0] for x in c.fetchall()]
-           
-            conn.commit()
-            c.close()
-
-        return tags
-
-    def getfiles(self, tags):
-        """
-        get all file that have the give tags (a list)
-        """
-        pass
-
 if __name__ == '__main__':
-    tagger = Tagger('TESTCONFIG')
+    metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    session = Session()
 
-    files = ['/home/linstead/Dropbox/Code/tagger/IMAGES/A.JPG', \
-              '/home/linstead/Dropbox/Code/tagger/IMAGES/B.JPG', \
-              '/home/linstead/Dropbox/Code/tagger/IMAGES/C.JPG', \
-              '/home/linstead/Dropbox/Code/tagger/IMAGES/D.JPG', \
-              '/home/linstead/Dropbox/Code/tagger/IMAGES/E.JPG', \
-              '/home/linstead/Dropbox/Code/tagger/IMAGES/DOES_NOT_EXIST.JPG']
+    filenames = {'/home/linstead/Dropbox/Code/tagger/IMAGES/A.JPG': ['file1tag1', 'file1tag2'], \
+              '/home/linstead/Dropbox/Code/tagger/IMAGES/B.JPG': ['file2tag1', 'file1tag1'], \
+              '/home/linstead/Dropbox/Code/tagger/IMAGES/C.JPG': ['file3tag1'], \
+              '/home/linstead/Dropbox/Code/tagger/IMAGES/D.JPG': ['file4tag1'], \
+              '/home/linstead/Dropbox/Code/tagger/IMAGES/E.JPG': ['file5tag1', 'file1tag1'], \
+              '/home/linstead/Dropbox/Code/tagger/IMAGES/DOES_NOT_EXIST.JPG': ['file6tag1']}
 
-    # Set some tags
-    for f in files:
-        tagger.settags(f, ['tag1', 'tag2'])
+    for f in filenames:
+        tf = TaggedFile(f)
+        hash = tf.hash
 
-#    tagger.settags(files[0], ['tag3'])
-#    tagger.settags(files[1], ['tag4 and something'])
-#    tagger.settags(files[3], 'tag999')
+        # TODO use properties on TaggedFile and move SA stuff in there
+        if hash != None:
+            file_ = File(hash, f)
 
-    # Read the tags for the given files
-    for f in files:
-        tags = tagger.gettags(f)
-        print "File: %s; Tags: %s" % (f, ", ".join(tags))
+            for v in filenames[f]:
+
+                # check if the tag exists in the database
+                try:
+                    existing = session.query(Tag).filter_by(tag=v).one()
+                    print "TAG EXISTS!!!"
+                except:
+                    file_.tags.append(Tag(v))
+
+        session.add(file_)
+
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+
+    # let's try again, but with a file that already exists in the DB:
+    tf = TaggedFile('/home/linstead/Dropbox/Code/tagger/IMAGES/A.JPG')
+    hash = tf.hash
+    file_ = File(hash, '/home/linstead/Dropbox/Code/tagger/IMAGES/A.JPG')
+    session.add(file_)
+
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+
+    # fetch a row from DB based on a hash
+    h = 'b9ee11b40b2741d92dd75fd8b7d09be1'
+    myfile = session.query(File).filter_by(hash=h).first()
+    print myfile
+
+    # fetch a row from DB based on a filename (not a good way: files could get moved)
+    myfile = session.query(File).filter_by(name='/home/linstead/Dropbox/Code/tagger/IMAGES/A.JPG').first()
+    print myfile
+
+    # Select all from the tables:
+    s = select([Tag.__table__])
+    conn = engine.connect()
+    res = conn.execute(s)
+    rows = res.fetchall()
+    for row in rows:
+        print row
+    # end select all
+
