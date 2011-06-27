@@ -16,7 +16,10 @@ def gethash(filename):
     """
     Get the hash for the given file. Private to this class
     """
+    print "getting hash for ", filename
+
     if os.path.exists(filename) == False:
+        print "NOT FOUND"
         return None
 
     md5 = hashlib.md5()
@@ -87,19 +90,28 @@ if __name__ == '__main__':
     Session = sessionmaker(bind=engine)
     session = Session()
 
-    filenames = {'/home/linstead/Dropbox/Code/tagger/IMAGES/A.JPG': ['fileAtag1', 'fileAtag2'], \
-              '/home/linstead/Dropbox/Code/tagger/IMAGES/B.JPG': ['fileBtag1', 'fileAtag1'], \
-              '/home/linstead/Dropbox/Code/tagger/IMAGES/C.JPG': ['fileCtag1'], \
-              '/home/linstead/Dropbox/Code/tagger/IMAGES/D.JPG': ['fileDtag1', 'fileDtag2'], \
-              '/home/linstead/Dropbox/Code/tagger/IMAGES/E.JPG': ['fileEtag1', 'fileAtag1'], \
-              '/home/linstead/Dropbox/Code/tagger/IMAGES/DOES_NOT_EXIST.JPG': ['fileDNEtag1']}
+    filenames = {'./IMAGES/A.JPG': ['fileAtag1', 'fileAtag2'], \
+                 './IMAGES/B.JPG': ['fileBtag1', 'fileAtag1'], \
+                 './IMAGES/C.JPG': ['fileCtag1'], \
+                 './IMAGES/D.JPG': ['fileDtag1', 'fileDtag2'], \
+                 './IMAGES/E.JPG': ['fileEtag1', 'fileAtag1'], \
+                 './IMAGES/DOES_NOT_EXIST.JPG': ['fileDNEtag1']}
 
     for f in filenames:
         hash = gethash(f)
 
         if hash != None: # i.e. file exists
-            # Do files ...
             file_ = File(hash, f)
+
+            for v in filenames[f]:
+
+                # check if the tag exists in the database, either add this or create new Tag
+                try:
+                    existing = session.query(Tag).filter_by(tag=v).one()
+                    file_.tags.append(existing)
+                except:
+                    file_.tags.append(Tag(v))
+
             session.add(file_)
 
             try:
@@ -107,34 +119,7 @@ if __name__ == '__main__':
             except IntegrityError:
                 session.rollback()
 
-            #... then do tags
-
-            for v in filenames[f]:
-                print v
-                file_.tags.append(Tag(v))
-
-                # check if the tag exists in the database
-                try:
-                    existing = session.query(Tag).filter_by(tag=v).one()
-                    print "**********************TAG EXISTS!!!"
-                except:
-                    file_.tags.append(Tag(v))
-
-            session.commit()
-
-    # let's try again, but with a file that already exists in the DB:
-#    fn = '/home/linstead/Dropbox/Code/tagger/IMAGES/A.JPG'
-#    file_ = File(gethash(fn), fn)
-#    session.add(file_)
-#
-#    try:
-#        session.commit()
-#    except IntegrityError:
-#        session.rollback()
-
-    # fetch a row from DB based on a filename (not a good way: files could get moved)
-#    myfile = session.query(File).filter_by(name='/home/linstead/Dropbox/Code/tagger/IMAGES/A.JPG').first()
-#    print myfile
+            #session.commit()
 
     # Select all from the tables:
     s = select([File.__table__])
