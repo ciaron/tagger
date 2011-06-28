@@ -4,7 +4,6 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, backref, sessionmaker
 from sqlalchemy.exc import *
 from sqlalchemy.sql import select
-#import sqlite3
 import hashlib
 import os
 
@@ -12,33 +11,11 @@ import os
 TODO: 
     - command line argument parsing
 """
-def gethash(filename):
-    """
-    Get the hash for the given file. Private to this class
-    """
-    print "getting hash for ", filename
-
-    if os.path.exists(filename) == False:
-        print "NOT FOUND"
-        return None
-
-    md5 = hashlib.md5()
-
-    with open(filename, 'rb') as f: 
-        for chunk in iter(lambda: f.read(8192), ''): 
-            md5.update(chunk)
-
-        # include the filename in the digest
-        md5.update(filename)
-
-    return md5.hexdigest()
-
-db = '/tmp/tagger.db'
-
 Base = declarative_base()
 
 # for now, we'll do everything in memory
 engine = create_engine('sqlite:///:memory:', echo=True)
+#engine = create_engine('sqlite:///data.db', echo=True)
 
 metadata = Base.metadata
 
@@ -57,8 +34,26 @@ class File(Base):
 
     tags = relationship('Tag', secondary=file_tags, backref='files', cascade="all, delete", lazy='dynamic')
 
-    def __init__(self, hash, name):
-        self.hash = hash
+    def gethash(self, filename):
+        """ Get the hash for the given file. Private to this class
+        """
+    
+        if os.path.exists(filename) == False:
+            return None
+
+        md5 = hashlib.md5()
+
+        with open(filename, 'rb') as f: 
+            for chunk in iter(lambda: f.read(8192), ''): 
+                md5.update(chunk)
+
+            # include the filename in the digest
+            md5.update(filename)
+
+        return md5.hexdigest()
+
+    def __init__(self, name):
+        self.hash = self.gethash(name)
         self.name = name
 
     def __repr__(self):
@@ -82,8 +77,14 @@ def getfiles(tag):
 def gettags(file_):
     """ accept a filename, return a list of all tags on that file
     """
-    tags = session.query(Tag).filter_by(tag=tag).all()
-    return files
+    f = File(file_)
+    h = f.hash
+
+    # need this select:
+    # SELECT tag FROM tags WHERE id IN (SELECT tag_id FROM file_tags WHERE file_id = (SELECT id FROM files WHERE hash='9d0afe2f7ecd1777c52b0ade784f052a'));
+    #tags = session.query(Tag.tag).filter(File.hash==h).all()
+    tags = session.query(Tag).filter(Tag.files.any(hash=h)).all()
+    return tags
 
 if __name__ == '__main__':
     metadata.create_all(engine)
@@ -98,11 +99,10 @@ if __name__ == '__main__':
                  './IMAGES/DOES_NOT_EXIST.JPG': ['fileDNEtag1']}
 
     for f in filenames:
-        hash = gethash(f)
 
-        if hash != None: # i.e. file exists
-            file_ = File(hash, f)
+        file_ = File(f)
 
+        if file_:
             for v in filenames[f]:
 
                 # check if the tag exists in the database, either add this or create new Tag
@@ -119,8 +119,23 @@ if __name__ == '__main__':
             except IntegrityError:
                 session.rollback()
 
-            #session.commit()
+    # get tags for a file
+    print "**** files with tag fileCtag1 *******"
+    files = getfiles('fileCtag1')
+    for file_ in files:
+        print file_.name
 
+    print "**** files with tag fileAtag1 *******"
+    files = getfiles('fileAtag1')
+    for file_ in files:
+        print file_.name
+
+    print "**** tags on file A.JPG *******"
+    tags = gettags('./IMAGES/D.JPG')
+    for tag in tags:
+        print tag.tag
+
+"""
     # Select all from the tables:
     s = select([File.__table__])
     conn = engine.connect()
@@ -144,12 +159,6 @@ if __name__ == '__main__':
         print row
     # end select all
 
-    # get tags for a file
-    files = getfiles('fileCtag1')
-    for file_ in files:
-        print file_
-
-"""
     # delete a row from DB based on a hash
     h = 'b9ee11b40b2741d92dd75fd8b7d09be1'
     myfile = session.query(File).filter_by(hash=h).first()
