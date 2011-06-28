@@ -1,5 +1,6 @@
 from sqlalchemy import Text, ForeignKey, Column, MetaData, String, Integer, Table
 from sqlalchemy import create_engine
+from sqlalchemy import or_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, backref, sessionmaker
 from sqlalchemy.exc import *
@@ -15,7 +16,7 @@ Base = declarative_base()
 
 # for now, we'll do everything in memory
 engine = create_engine('sqlite:///:memory:', echo=True)
-#engine = create_engine('sqlite:///data.db', echo=True)
+#engine = create_engine('sqlite:///data.db', echo=True) # create DB file in current dir
 
 metadata = Base.metadata
 
@@ -69,7 +70,7 @@ class Tag(Base):
         self.tag = tag
 
 def getfiles(tag):
-    """ accept a list of tags, return a list of all files with all of those tags
+    """ accept a (list of) tag(s), return a list of all files with all of those tags
     """
     files = session.query(File).filter(File.tags.any(tag=tag)).all()
     return files
@@ -80,9 +81,6 @@ def gettags(file_):
     f = File(file_)
     h = f.hash
 
-    # need this select:
-    # SELECT tag FROM tags WHERE id IN (SELECT tag_id FROM file_tags WHERE file_id = (SELECT id FROM files WHERE hash='9d0afe2f7ecd1777c52b0ade784f052a'));
-    #tags = session.query(Tag.tag).filter(File.hash==h).all()
     tags = session.query(Tag).filter(Tag.files.any(hash=h)).all()
     return tags
 
@@ -120,20 +118,21 @@ if __name__ == '__main__':
                 session.rollback()
 
     # get tags for a file
-    print "**** files with tag fileCtag1 *******"
-    files = getfiles('fileCtag1')
-    for file_ in files:
-        print file_.name
-
     print "**** files with tag fileAtag1 *******"
     files = getfiles('fileAtag1')
     for file_ in files:
         print file_.name
 
-    print "**** tags on file A.JPG *******"
+    print "**** tags on file D.JPG *******"
     tags = gettags('./IMAGES/D.JPG')
     for tag in tags:
         print tag.tag
+
+    # lists of tags not supported yet
+#    print "**** files with tags fileDtag1 AND fileDtag2 *******"
+#    files = getfiles(['fileDtag1', 'fileDtag2'])
+#    for file_ in files:
+#        print file_.name
 
 """
     # Select all from the tables:
