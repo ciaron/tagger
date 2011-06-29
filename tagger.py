@@ -11,6 +11,10 @@ import os
 """
 TODO: 
     - command line argument parsing
+
+NOTES:
+SELECT files.name FROM files JOIN file_tags ON files.id=file_tags.file_id WHERE file_tags.tag_id IN (5, 6, 7) GROUP BY files.name;
+
 """
 Base = declarative_base()
 
@@ -72,8 +76,12 @@ class Tag(Base):
 def getfiles(tag):
     """ accept a (list of) tag(s), return a list of all files with all of those tags
     """
-    files = session.query(File).filter(File.tags.any(tag=tag)).all()
-    return files
+    # TODO: accept a list, or a single tag
+    q = session.query(File.name)
+    for t in tag:
+        q = q.filter(File.tags.any(tag=t))
+    q = q.all()
+    return q
 
 def gettags(file_):
     """ accept a filename, return a list of all tags on that file
@@ -92,7 +100,7 @@ if __name__ == '__main__':
     filenames = {'./IMAGES/A.JPG': ['fileAtag1', 'fileAtag2'], \
                  './IMAGES/B.JPG': ['fileBtag1', 'fileAtag1'], \
                  './IMAGES/C.JPG': ['fileCtag1'], \
-                 './IMAGES/D.JPG': ['fileDtag1', 'fileDtag2'], \
+                 './IMAGES/D.JPG': ['fileAtag1', 'fileDtag1', 'fileDtag2'], \
                  './IMAGES/E.JPG': ['fileEtag1', 'fileAtag1'], \
                  './IMAGES/DOES_NOT_EXIST.JPG': ['fileDNEtag1']}
 
@@ -118,21 +126,21 @@ if __name__ == '__main__':
                 session.rollback()
 
     # get tags for a file
-    print "**** files with tag fileAtag1 *******"
-    files = getfiles('fileAtag1')
-    for file_ in files:
-        print file_.name
-
-    print "**** tags on file D.JPG *******"
-    tags = gettags('./IMAGES/D.JPG')
-    for tag in tags:
-        print tag.tag
-
-    # lists of tags not supported yet
-#    print "**** files with tags fileDtag1 AND fileDtag2 *******"
-#    files = getfiles(['fileDtag1', 'fileDtag2'])
+#    print "**** files with tag fileAtag1 *******"
+#    files = getfiles('fileAtag1')
 #    for file_ in files:
 #        print file_.name
+
+    #print "**** tags on file D.JPG *******"
+    #tags = gettags('./IMAGES/D.JPG')
+    #for tag in tags:
+    #    print tag.tag
+
+    # lists of tags not supported yet
+    print "**** files with tags fileDtag1 AND fileDtag2 *******"
+    files = getfiles(['fileAtag1', 'fileDtag1', 'fileDtag2'])
+    for file_ in files:
+        print file_.name
 
 """
     # Select all from the tables:
