@@ -137,8 +137,9 @@ if __name__ == '__main__':
     #    print tag.tag
 
     # lists of tags not supported yet
-    print "**** files with tags fileDtag1 AND fileDtag2 *******"
-    files = getfiles(['fileAtag1', 'fileDtag1', 'fileDtag2'])
+    tags = ['fileAtag1', 'fileDtag1', 'fileDtag2']
+    print "**** files with all these tags: %s *******" % (" ".join(tags))
+    files = getfiles(tags)
     for file_ in files:
         print file_.name
 
