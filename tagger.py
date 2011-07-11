@@ -11,10 +11,6 @@ import os
 """
 TODO: 
     - command line argument parsing
-
-NOTES:
-SELECT files.name FROM files JOIN file_tags ON files.id=file_tags.file_id WHERE file_tags.tag_id IN (5, 6, 7) GROUP BY files.name;
-
 """
 Base = declarative_base()
 
@@ -79,10 +75,8 @@ class File(Base):
             try:
                 existing = session.query(Tag).filter_by(tag=t).one()
                 self._tags.append(existing)
-                self.ts.append(existing)
             except:
                 self._tags.append(Tag(t))
-                self.ts.append(Tag(t))
 
         session.add(self)
 
@@ -93,6 +87,7 @@ class File(Base):
 
     def deltag(self):
         print "Delete not implemented"
+        #print [n.tag for n in self.ts]
         #tag = self.ts
         #t = session.query(Tag).filter_by(tag=tag).one()
         #self._tags.delete(Tag(t))
@@ -145,9 +140,6 @@ if __name__ == '__main__':
     f1.tags = ['fileEtag3']
     f1.tags = ['fileEtag4']
 
-    f1.tags = ['fileEtag1']
-    del f1.tags
-
     for f in filenames:
 
         file_ = File(f)
@@ -157,19 +149,24 @@ if __name__ == '__main__':
             # or
 #           file_.tags = 'aNewTag' # send a single tag for APPENDING
             # then
-#           del file_.tags # to delete that tag
+#           del file_.tags # to delete that tag on that file
 
             # or, in keeping with list syntax
             #file_.remove('tag')
 
     # get tags for a file
     f = File('./IMAGES/A.JPG')
-    print "f TAGS:", f.tags
+    print "f TAGS BEFORE:", f.tags
 
-    print "f1 TAGS:", f1.tags
+    tag = session.query(Tag).filter(tag='fileAtag1').one()
+    f._tags.delete(tag) 
+    print "f TAGS AFTER:", f.tags
 
     f3 = File('./IMAGES/D.JPG')
     print "D.JPG TAGS:", f3.tags
+
+    f4 = File('./IMAGES/C.JPG')
+    print "C.JPG TAGS:", f4.tags
 
     # get files for a (list of) tag(s)
 #    t1 = Tag('fileAtag1')
@@ -205,47 +202,4 @@ if __name__ == '__main__':
     files = getfiles(tag)
     for file_ in files:
         print file_.name
-"""
-
-"""
-    # Select all from the tables:
-    s = select([File.__table__])
-    conn = engine.connect()
-    res = conn.execute(s)
-    rows = res.fetchall()
-    for row in rows:
-        print row
-
-    s = select([Tag.__table__])
-    conn = engine.connect()
-    res = conn.execute(s)
-    rows = res.fetchall()
-    for row in rows:
-        print row
-
-    s = select([file_tags])
-    conn = engine.connect()
-    res = conn.execute(s)
-    rows = res.fetchall()
-    for row in rows:
-        print row
-    # end select all
-
-    # delete a row from DB based on a hash
-    h = 'b9ee11b40b2741d92dd75fd8b7d09be1'
-    myfile = session.query(File).filter_by(hash=h).first()
-    session.delete(myfile)
-    session.commit()
-    s = select([File.__table__])
-    conn = engine.connect()
-    res = conn.execute(s)
-    rows = res.fetchall()
-    for row in rows:
-        print row
-    s = select([Tag.__table__])
-    conn = engine.connect()
-    res = conn.execute(s)
-    rows = res.fetchall()
-    for row in rows:
-        print row
 """
