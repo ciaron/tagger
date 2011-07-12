@@ -155,12 +155,27 @@ if __name__ == '__main__':
             #file_.remove('tag')
 
     # get tags for a file
-    f = File('./IMAGES/A.JPG')
+    fn = './IMAGES/A.JPG'
+
+#    for i in session.query(Tag).filter(Tag.files.any(hash=f.hash)).filter(Tag.tag=='fileAtag1'):
+#        print i.tag
+
+    f = session.query(File).filter(File.name==fn).one()
+
+    # BEFORE
     print "f TAGS BEFORE:", f.tags
 
-    tag = session.query(Tag).filter(tag='fileAtag1').one()
-    f._tags.delete(tag) 
-    print "f TAGS AFTER:", f.tags
+    tag_to_delete = session.query(Tag).filter(Tag.tag=='fileAtag1').one()
+    print f._tags
+    print type(f._tags[0]) # unicode
+    f._tags.remove(tag_to_delete) # problem! f.tags is a list of strings not objects!!!!!
+    session.commit()
+
+    # AFTER
+    print "f TAGS AFTER DELETING:", f.tags
+
+    f2 = File('./IMAGES/A.JPG')
+    print "A.JPG TAGS:", f2.tags
 
     f3 = File('./IMAGES/D.JPG')
     print "D.JPG TAGS:", f3.tags
