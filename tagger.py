@@ -2,7 +2,7 @@ from sqlalchemy import Text, ForeignKey, Column, MetaData, String, Integer, Tabl
 from sqlalchemy import create_engine
 from sqlalchemy import or_
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, backref, sessionmaker
+from sqlalchemy.orm import relationship, backref, sessionmaker, exc
 from sqlalchemy.exc import *
 from sqlalchemy.sql import select
 import hashlib
@@ -34,7 +34,15 @@ class File(Base):
     hash = Column(String(255), nullable=False, unique=True)
     name = Column(String(255), nullable=False)
 
-    _tags = relationship('Tag', secondary=file_tags, backref='files', cascade="all, delete", lazy='dynamic')
+    tags = relationship('Tag', secondary=file_tags, backref='files', cascade="all, delete", lazy='dynamic')
+
+    def __init__(self, name):
+        self.hash = self.gethash(name)
+        self.name = name
+
+    def __repr__(self):
+        return "File(%r, %r, %r)" % (self.id, self.hash, self.name)
+
 
     def gethash(self, filename):
         """ Get the hash for the given file. Private to this class
@@ -54,29 +62,15 @@ class File(Base):
 
         return md5.hexdigest()
 
-    def __init__(self, name):
-        self.hash = self.gethash(name)
-        self.name = name
-        self.ts = [] # the tags on this file instance
-
-    def __repr__(self):
-        return "File(%r, %r, %r)" % (self.id, self.hash, self.name)
-
-    def gettags(self):
-        self.ts = session.query(Tag).filter(Tag.files.any(hash=self.hash)).all()
-        return [t.tag for t in self.ts]
-
-    def settags(self, vals):
-        # vals is expected to be a list
-
+    def tag(self, *vals):
         for t in vals:
 
             # check if the tag exists in the database, either add this or create new Tag
             try:
                 existing = session.query(Tag).filter_by(tag=t).one()
-                self._tags.append(existing)
+                self.tags.append(existing)
             except:
-                self._tags.append(Tag(t))
+                self.tags.append(Tag(t))
 
         session.add(self)
 
@@ -85,17 +79,18 @@ class File(Base):
         except IntegrityError:
             session.rollback()
 
-    def deltag(self):
-        print "Delete not implemented"
-        #print [n.tag for n in self.ts]
-        #tag = self.ts
-        #t = session.query(Tag).filter_by(tag=tag).one()
-        #self._tags.delete(Tag(t))
+    def remove(self, text):
+        try:
+            tag_to_delete = session.query(Tag).filter(Tag.tag==text).one()
+            self.tags.remove(tag_to_delete)
 
-        pass
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+        except exc.NoResultFound:
+            pass
         
-    tags = property(gettags, settags, deltag, "I'm the tags property on File")
-
 class Tag(Base):
     __tablename__ = 'tags'
 
@@ -105,24 +100,21 @@ class Tag(Base):
     def __init__(self, tag):
         self.tag = tag
 
-#def getfiles(*tag):
-#    """ accept a (list of) tag(s), return a list of all files with all of those tags
-#    """
-#
-#    q = session.query(File.name)
-#    for t in tag:
-#        q = q.filter(File._tags.any(tag=t))
-#    q = q.all()
-#    return q
+def getfiles(*tags):
+    """ accept a (list of) tag(s), return a list of all files with all of those tags
+    """
 
-#def gettags(file_):
-#    """ accept a filename, return a list of all tags on that file
-#    """
-#    f = File(file_)
-#    h = f.hash
-#
-#    tags = session.query(Tag).filter(Tag.files.any(hash=h)).all()
-#    return tags
+    q = session.query(File)
+    for t in tags:
+        q = q.filter(File.tags.any(tag=t))
+    q = q.all()
+    return [files.name for files in q]
+
+def gettags(filename):
+    f = File(filename)
+    hash = f.gethash(filename)
+    ts = session.query(Tag).filter(Tag.files.any(hash=hash)).all()
+    return [t.tag for t in ts]
 
 if __name__ == '__main__':
     metadata.create_all(engine)
@@ -136,85 +128,44 @@ if __name__ == '__main__':
                  './IMAGES/DOES_NOT_EXIST.JPG': ['fileDNEtag1']}
 
     f1 = File('./IMAGES/E.JPG')
-    f1.tags = ['fileEtag1', 'fileEtag2']
-    f1.tags = ['fileEtag3']
-    f1.tags = ['fileEtag4']
+    f1.tag('fileEtag1', 'fileEtag2')
+    f1.tag('fileEtag3')
+    f1.tag('fileEtag4')
+    f1.remove('fileEtag3')
+    f1.remove('fileAtag3')
+    print "E.JPG: %s" % gettags('./IMAGES/E.JPG')
 
     for f in filenames:
-
         file_ = File(f)
-
         if file_:
-            file_.tags = filenames[f] # send a list for APPENDING!
-            # or
-#           file_.tags = 'aNewTag' # send a single tag for APPENDING
-            # then
-#           del file_.tags # to delete that tag on that file
+            for tag in filenames[f]:
+                file_.tag(tag)
 
-            # or, in keeping with list syntax
-            #file_.remove('tag')
+    fname = './IMAGES/A.JPG'
+    f2 = session.query(File).filter(File.name==fname).one()
+    print "A.JPG TAGS BEFORE:", gettags(fname)
+    f2.remove('fileAtag1')
+    f2.tag('a new tag for A')
+    print "A.JPG TAGS AFTER:", gettags(fname)
 
-    # get tags for a file
-    fn = './IMAGES/A.JPG'
+    fname = './IMAGES/D.JPG'
+    f3 = session.query(File).filter(File.name==fname).one()
+    print "D.JPG TAGS:", gettags(fname)
 
-#    for i in session.query(Tag).filter(Tag.files.any(hash=f.hash)).filter(Tag.tag=='fileAtag1'):
-#        print i.tag
+    fname = './IMAGES/C.JPG'
+    f4 = session.query(File).filter(File.name==fname).one()
+    print "C.JPG TAGS:", gettags(fname)
 
-    f = session.query(File).filter(File.name==fn).one()
-
-    # BEFORE
-    print "f TAGS BEFORE:", f.tags
-
-    tag_to_delete = session.query(Tag).filter(Tag.tag=='fileAtag1').one()
-    print f._tags
-    print type(f._tags[0]) # unicode
-    f._tags.remove(tag_to_delete) # problem! f.tags is a list of strings not objects!!!!!
-    session.commit()
-
-    # AFTER
-    print "f TAGS AFTER DELETING:", f.tags
-
-    f2 = File('./IMAGES/A.JPG')
-    print "A.JPG TAGS:", f2.tags
-
-    f3 = File('./IMAGES/D.JPG')
-    print "D.JPG TAGS:", f3.tags
-
-    f4 = File('./IMAGES/C.JPG')
-    print "C.JPG TAGS:", f4.tags
+    fname = './IMAGES/DOESNOTEXIST.JPG'
+    try: # we should only get one File object!
+        f5 = session.query(File).filter(File.name==fname).one()
+        print "DOESNOTEXIST.JPG TAGS:", gettags(fname)
+    except exc.NoResultFound:
+        print "nothing found for", fname
 
     # get files for a (list of) tag(s)
-#    t1 = Tag('fileAtag1')
-#    print t1.files
+    fs = getfiles('fileAtag1')
+    print fs
 
-#    t2 = Tag(['fileAtag1', 'fileDtag1'])
-#    print t2.files
-
-"""
-    # OLD STYLE GETTERS
-
-    # get tags for a file
-    print "**** tags on file A.JPG *******"
-    t1 = gettags('./IMAGES/A.JPG')
-    for tag in t1:
-        print tag.tag
-
-    print "**** tags on file D.JPG *******"
-    tags = gettags('./IMAGES/D.JPG')
-    for tag in tags:
-        print tag.tag
-
-    # get files which have a list of tags
-    tags = ['fileAtag1', 'fileDtag1', 'fileDtag2']
-    print "**** files with all these tags: %s *******" % (" ".join(tags))
-    files = getfiles(*tags) # passing a list, treated like getfiles(tag1, tag2, tag3)
-    for file_ in files:
-        print file_.name
-
-    # get files with a single tag
-    tag = 'fileAtag1'
-    print "**** files with this tag: %s *******" % (tag)
-    files = getfiles(tag)
-    for file_ in files:
-        print file_.name
-"""
+    fs = getfiles('fileAtag1', 'fileDtag1')
+    print fs
