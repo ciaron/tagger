@@ -1,6 +1,5 @@
 from sqlalchemy import Text, ForeignKey, Column, MetaData, String, Integer, Table
 from sqlalchemy import create_engine
-from sqlalchemy import or_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, backref, sessionmaker, exc
 from sqlalchemy.exc import *
@@ -10,18 +9,15 @@ import os
 
 """
 TODO: 
+    - existence of file is checked in gethash(): move this up the hierarchy
     - command line argument parsing
 """
+
 Base = declarative_base()
-
-# for now, we'll do everything in memory
-#engine = create_engine('sqlite:///:memory:', echo=True)
-engine = create_engine('sqlite:///:memory:', echo=False)
-#engine = create_engine('sqlite:///data.db', echo=True) # create DB file in current dir
-
 metadata = Base.metadata
+engine = create_engine('sqlite:///:memory:', echo=False)
 
-# association table: file <-> tag
+# many-to-many association table: files <-> tags
 file_tags = Table('file_tags', metadata,
     Column('file_id', Integer, ForeignKey('files.id')),
     Column('tag_id', Integer, ForeignKey('tags.id'))
@@ -100,6 +96,59 @@ class Tag(Base):
     def __init__(self, tag):
         self.tag = tag
 
+class Tagger():
+
+    def __init__(self):
+
+        Base = declarative_base()
+        metadata = Base.metadata
+        engine = create_engine('sqlite:///:memory:', echo=False)
+
+        # many-to-many association table: files <-> tags
+        file_tags = Table('file_tags', metadata,
+            Column('file_id', Integer, ForeignKey('files.id')),
+            Column('tag_id', Integer, ForeignKey('tags.id'))
+        )
+
+        metadata.create_all(engine)
+        Session = sessionmaker(bind=engine)
+        session = Session()
+
+    def getfiles(self, *tags):
+        """ accept a (list of) tag(s), return a list of all files with all of those tags
+        """
+
+        q = session.query(File)
+        for t in tags:
+            q = q.filter(File.tags.any(tag=t))
+        q = q.all()
+        return [files.name for files in q]
+
+    def gettags(self, filename):
+
+        f = File(filename)
+        hash = f.gethash(filename)
+        ts = session.query(Tag).filter(Tag.files.any(hash=hash)).all()
+        return [t.tag for t in ts]
+
+    def addtags(self, filename, *tags):
+        try:
+            f = session.query(File).filter(File.name==filename).one()
+        except exc.NoResultFound: # file not in DB, add it
+            f = File(filename)
+
+        for tag in tags:
+            f.tag(tag)
+
+    def rmtags(self, filename, *tags):
+        try:
+            f = session.query(File).filter(File.name==filename).one()
+        except exc.NoResultFound:
+            return None
+
+        for tag in tags:
+            f.remove(tag)
+
 def getfiles(*tags):
     """ accept a (list of) tag(s), return a list of all files with all of those tags
     """
@@ -111,12 +160,32 @@ def getfiles(*tags):
     return [files.name for files in q]
 
 def gettags(filename):
+
     f = File(filename)
     hash = f.gethash(filename)
     ts = session.query(Tag).filter(Tag.files.any(hash=hash)).all()
     return [t.tag for t in ts]
 
+def addtags(filename, *tags):
+    try:
+        f = session.query(File).filter(File.name==filename).one()
+    except exc.NoResultFound: # file not in DB, add it
+        f = File(filename)
+
+    for tag in tags:
+        f.tag(tag)
+
+def rmtags(filename, *tags):
+    try:
+        f = session.query(File).filter(File.name==filename).one()
+    except exc.NoResultFound:
+        return None
+
+    for tag in tags:
+        f.remove(tag)
+
 if __name__ == '__main__':
+
     metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     session = Session()
@@ -127,45 +196,37 @@ if __name__ == '__main__':
                  './IMAGES/D.JPG': ['fileAtag1', 'fileDtag1', 'fileDtag2'], \
                  './IMAGES/DOES_NOT_EXIST.JPG': ['fileDNEtag1']}
 
-    f1 = File('./IMAGES/E.JPG')
-    f1.tag('fileEtag1', 'fileEtag2')
-    f1.tag('fileEtag3')
-    f1.tag('fileEtag4')
-    f1.remove('fileEtag3')
-    f1.remove('fileAtag3')
-    print "E.JPG: %s" % gettags('./IMAGES/E.JPG')
+    # want to be able to do something like:
+#    t = Tagger()
+#    t.addtags(filename, tag1, tag2)
+#    print "E.JPG TAGS:", t.gettags('./IMAGES/E.JPG')
+    # i.e. without handling database stuff in client code
 
-    for f in filenames:
-        file_ = File(f)
-        if file_:
-            for tag in filenames[f]:
-                file_.tag(tag)
+    addtags('./IMAGES/E.JPG', 'fileEtag1', 'fileEtag2', 'fileEtag3', 'fileEtag4')
+    rmtags('./IMAGES/E.JPG', 'fileEtag3', 'fileEtag1')
+    print "E.JPG TAGS:", gettags('./IMAGES/E.JPG')
 
-    fname = './IMAGES/A.JPG'
-    f2 = session.query(File).filter(File.name==fname).one()
-    print "A.JPG TAGS BEFORE:", gettags(fname)
-    f2.remove('fileAtag1')
-    f2.tag('a new tag for A')
-    print "A.JPG TAGS AFTER:", gettags(fname)
-
-    fname = './IMAGES/D.JPG'
-    f3 = session.query(File).filter(File.name==fname).one()
-    print "D.JPG TAGS:", gettags(fname)
-
-    fname = './IMAGES/C.JPG'
-    f4 = session.query(File).filter(File.name==fname).one()
-    print "C.JPG TAGS:", gettags(fname)
-
-    fname = './IMAGES/DOESNOTEXIST.JPG'
-    try: # we should only get one File object!
-        f5 = session.query(File).filter(File.name==fname).one()
-        print "DOESNOTEXIST.JPG TAGS:", gettags(fname)
-    except exc.NoResultFound:
-        print "nothing found for", fname
-
-    # get files for a (list of) tag(s)
-    fs = getfiles('fileAtag1')
-    print fs
-
-    fs = getfiles('fileAtag1', 'fileDtag1')
-    print fs
+#    for f in filenames:
+#        addtags(f, *filenames[f])
+#
+#    rmtags('./IMAGES/A.JPG', 'fileAtag1')
+#    addtags('./IMAGES/A.JPG', 'a new tag for A')
+#    addtags('./IMAGES/DOESNOTEXIST.JPG', 'DNE_tag1', 'DNE_tag2')
+#    if rmtags('./IMAGES/DOESNOTEXIST.JPG', 'DNE_tag1', 'DNE_tag2') == None:
+#        print 'rmtags failed for some reason'
+#
+#    print "A.JPG TAGS:", gettags('./IMAGES/A.JPG')
+#    print "B.JPG TAGS:", gettags('./IMAGES/B.JPG')
+#    print "C.JPG TAGS:", gettags('./IMAGES/C.JPG')
+#    print "D.JPG TAGS:", gettags('./IMAGES/D.JPG')
+#    print "E.JPG TAGS:", gettags('./IMAGES/E.JPG')
+#    print "DOESNOTEXIST.JPG TAGS:", gettags('./IMAGES/DOESNOTEXIST.JPG')
+#
+#    # get files for a (list of) tag(s)
+#    ts = 'fileAtag1'
+#    fs = getfiles(ts)
+#    print "Files with tags %s: %s" % (ts, fs)
+#
+#    ts = ['fileAtag1', 'fileDtag1']
+#    fs = getfiles(*ts)
+#    print "Files with tags %s: %s" % (ts, fs)
